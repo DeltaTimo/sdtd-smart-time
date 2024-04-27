@@ -12,6 +12,8 @@ public class SmartTime : IModApi
     public static SmartTimeOverride Overridden = SmartTimeOverride.DEFAULT;
     int minNumberOfPlayers = 4;
     ulong lastWorldTime = 0;
+    ulong accumulatedTimeUpdate = 0;
+    const ulong FAKE_UPDATE_INTERVAL = 100;
 
     public void InitMod(Mod mod)
     {
@@ -63,10 +65,21 @@ public class SmartTime : IModApi
             return;
         }
 
-        ulong elapsed;
-        if (UpdateWorldTime(out elapsed)) {
-          UpdateDewCollectors(world, elapsed);
+        if (UpdateWorldTime(out var elapsed)) {
+            FakeUpdate(world, elapsed);
         }
+    }
+
+    private void FakeUpdate(World world, ulong elapsed) {
+        accumulatedTimeUpdate += elapsed;
+        if (accumulatedTimeUpdate >= FAKE_UPDATE_INTERVAL) {
+            PerformFakeUpdate(world, FAKE_UPDATE_INTERVAL);
+            accumulatedTimeUpdate -= FAKE_UPDATE_INTERVAL;
+        }
+    }
+
+    private void PerformFakeUpdate(World world, ulong totalElapsed) {
+        UpdateDewCollectors(world, totalElapsed);
     }
 
     public static void ForceFreeze() {
