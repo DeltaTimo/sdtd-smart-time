@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Reflection;
 
 public class SmartTime : IModApi
 {
@@ -32,30 +33,40 @@ public class SmartTime : IModApi
         return world.Players.list.Count >= minNumberOfPlayers;
     }
 
-    private bool UpdateWorldTime() {
+    /* Returns true iff time is frozen. */
+    private bool UpdateWorldTime(out ulong elapsed) {
         World world = GameManager.Instance.World;
         if (lastWorldTime == 0) {
             lastWorldTime = world.worldTime;
         }
 
+        elapsed = world.worldTime - lastWorldTime;
         if (!ShouldTimeProgress()) {
             world.SetTimeJump(lastWorldTime, false);
-            return false;
+            return true;
         } else {
             lastWorldTime = world.worldTime;
-            return true;
+            return false;
         }
     }
 
     public void GameUpdate()
     {
         World world = GameManager.Instance.World;
-        if (world.Players.list.Count == 0 && Overridden != SmartTimeOverride.DEFAULT) {
-            // Reset override as soon as all players are disconnected.
-            Overridden = SmartTimeOverride.DEFAULT;
+        if (world.Players.list.Count == 0) {
+            if (Overridden != SmartTimeOverride.DEFAULT) {
+                // Reset override as soon as all players are disconnected.
+                Overridden = SmartTimeOverride.DEFAULT;
+                lastWorldTime = 0;
+            }
+
+            return;
         }
 
-        UpdateWorldTime();
+        ulong elapsed;
+        if (UpdateWorldTime(out elapsed)) {
+          UpdateDewCollectors(world, elapsed);
+        }
     }
 
     public static void ForceFreeze() {
@@ -64,6 +75,39 @@ public class SmartTime : IModApi
 
     public static void ForceUnfreeze() {
         Overridden = SmartTimeOverride.UNFREEZE;
+    }
+
+    private void UpdateDewCollector(World world, TileEntityDewCollector dewCollector, ulong elapsed) {
+        if (dewCollector != null) {
+            System.Type dewType = dewCollector.GetType();
+            FieldInfo dewTime = dewType.GetField("lastWorldTime",
+                    BindingFlags.Instance |
+                    BindingFlags.Public   |
+                    BindingFlags.NonPublic);
+            dewTime.SetValue(dewCollector, world.worldTime - elapsed);
+            dewCollector.HandleUpdate(world);
+        }
+    }
+
+    private void UpdateDewCollectors(World world, ulong elapsed) {
+        if (elapsed == 0) {
+          return;
+        }
+
+        List<Chunk> chunkArrayCopySync = world.ChunkCache.GetChunkArrayCopySync();
+        for (int i = 0; i < chunkArrayCopySync.Count; i++) {
+            var chunk = chunkArrayCopySync[i];
+            var chunkWorldPos = chunk.GetWorldPos();
+            chunk.LoopOverAllBlocks(delegate(int x, int y, int z, BlockValue blockValue) {
+                var block = blockValue.Block;
+                if (block is BlockDewCollector) {
+                    var blockPos = new Vector3i(x, y, z);
+                    TileEntity tileEntity = chunk.GetTileEntity(blockPos);
+                    var dewCollector = tileEntity as TileEntityDewCollector;
+                    UpdateDewCollector(world, dewCollector, elapsed);
+                }
+            });
+        }
     }
 }
 

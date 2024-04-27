@@ -12,6 +12,8 @@ $CSC /out:bin/SmartTime.dll \
   -r:lib/System.dll \
   -r:lib/System.Xml.dll \
   -r:lib/UnityEngine.dll \
+  -r:lib/UnityEngine.CoreModule.dll \
+  -r:lib/UnityEngine.SharedInternalsModule.dll \
   API.cs
 
 if [ "$?" -eq 0 ] ; then
