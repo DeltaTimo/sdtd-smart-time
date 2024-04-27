@@ -12,6 +12,14 @@ This is great for when *7 Days to Die* is played in a Coop setting where all pla
 * When the `starttime` command is issued, the world time is unfrozen regardless of the player count. This command is reset as soon as all players disconnect.
 * When the `stoptime` command is issued, the world time is frozen regardless of the player count. This command is reset as soon as all players disconnect.
 
+### Additional functionality.
+
+* **Dew Collectors** do not collect water when the world time is not changing, as hunger and thirst still increase, dew collectors have been modified to collect water even if the world time does not change.
+    * Dew Collectors are only modified when time is frozen.
+    * This is done by using *Reflection*, which means it potentially breaks on an update if the variable name or type change.
+    * On each update, the world time that would have elapsed since the last time is computed and in each Dew Collector `lastWorldTime := currentWorldTime - elapsedTime` is set and `HandleUpdate` called.
+    * This should bring the modified Dew Collector behaviour as close to the vanilla behaviour as possible, while still collecting water if the world time is frozen.
+
 ## Installation
 
 * (Get latest ZIP from Releases.)
