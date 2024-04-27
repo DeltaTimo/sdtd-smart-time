@@ -1,9 +1,10 @@
 #!/bin/zsh
 
+MOD_NAME="SmartTime"
 export WINEDEBUG="-all"
 CSC="/usr/lib/mono/msbuild/Current/bin/Roslyn/csc.exe"
 
-$CSC /out:bin/SmartTime.dll \
+$CSC /out:bin/${MOD_NAME}.dll \
   /target:library \
   -r:lib/Assembly-CSharp.dll \
   -r:lib/Assembly-CSharp-firstpass.dll \
@@ -13,15 +14,14 @@ $CSC /out:bin/SmartTime.dll \
   -r:lib/System.Xml.dll \
   -r:lib/UnityEngine.dll \
   -r:lib/UnityEngine.CoreModule.dll \
-  -r:lib/UnityEngine.SharedInternalsModule.dll \
   API.cs
 
 if [ "$?" -eq 0 ] ; then
   cd bin
-    [ -d "SmartTime" ] && rm -rf SmartTime
-    mkdir SmartTime
-    cp SmartTime.dll SmartTime/.
-    cp ../ModInfo.xml SmartTime/.
-    zip SmartTime.zip SmartTime/*
+    [ -d "${MOD_NAME}" ] && rm -rf ${MOD_NAME}
+    mkdir ${MOD_NAME}
+    cp ${MOD_NAME}.dll ${MOD_NAME}/.
+    cp ../ModInfo.xml ${MOD_NAME}/.
+    zip ${MOD_NAME}.zip ${MOD_NAME}/*
   cd ..
 fi
