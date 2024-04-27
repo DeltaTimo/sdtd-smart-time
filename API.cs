@@ -95,7 +95,38 @@ public class SmartTime : IModApi
         ChatBroadcast(TimeFrozenMessage);
     }
 
+    private const string BloodMoonPlayersDisconnectMessage = "[FF0000] No longer enough players, but Blood Moon is in progress: Time will [b]not[/b] be frozen. Use stoptime to freeze.";
+    private int lastPlayerCount = 0;
     public void GameUpdate() {
+        World world = GameManager.Instance.World;
+        var playerCount = world.Players.list.Count;
+
+        // Reset override when all players are disconnected.
+        if (playerCount == 0 && Overridden != SmartTimeOverride.DEFAULT) {
+            Overridden = SmartTimeOverride.DEFAULT;
+        }
+
+        (int day, int hour, int minute) = GameUtils.WorldTimeToElements(world.worldTime);
+
+        var bloodMoonDay = GameStats.GetInt(EnumGameStats.BloodMoonDay);
+
+        if (playerCount != lastPlayerCount) {
+            if (day == bloodMoonDay) {
+                // It's blood moon day, don't reset.
+                if (world.worldTime >= GameUtils.DayTimeToWorldTime(day, BLOOD_MOON_HOUR, BLOOD_MOON_MINUTE) - GRACE_TIME) {
+                    if (playerCount >= minNumberOfPlayers && lastPlayerCount < minNumberOfPlayers) {
+                        // No longer enough players.
+                        // Do not automatically freeze!
+                        if (Overridden == SmartTimeOverride.DEFAULT) {
+                            Overridden = SmartTimeOverride.UNFREEZE;
+                            ChatBroadcast(BloodMoonPlayersDisconnectMessage);
+                        }
+                    }
+                }
+            }
+        }
+        lastPlayerCount = playerCount;
+
         bool shouldProgress = ShouldTimeProgress();
 
         if (shouldProgress != WasTimeProgressing) {
@@ -107,15 +138,11 @@ public class SmartTime : IModApi
         }
         WasTimeProgressing = shouldProgress;
 
+
         if (shouldProgress) {
             // Do nothing.
             return;
         }
-
-        World world = GameManager.Instance.World;
-        (int day, int hour, int minute) = GameUtils.WorldTimeToElements(world.worldTime);
-
-        var bloodMoonDay = GameStats.GetInt(EnumGameStats.BloodMoonDay);
 
         if (day == bloodMoonDay) {
             // Handle blood moon.
