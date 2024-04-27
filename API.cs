@@ -15,13 +15,25 @@ public class SmartTime : IModApi
     ulong accumulatedTimeUpdate = 0;
     const ulong FAKE_UPDATE_INTERVAL = 100;
 
+    const int BLOOD_MOON_HOUR = 18;
+    const int BLOOD_MOON_MINUTE = 0;
+
+    const int DAY_END_HOUR = 23;
+    const int DAY_END_MINUTE = 59;
+
+    readonly ulong GRACE_TIME = GameUtils.TotalMinutesToWorldTime(5);
+
+    public static SmartTime Instance { get; private set; } = null;
+
     public void InitMod(Mod mod)
     {
         ModEvents.GameUpdate.RegisterHandler(GameUpdate);
-        // Maybe this happens automatically already?!
-        // SingletonMonoBehaviour<SdtdConsole>.Instance.RegisterCommands();
-
+        ModEvents.PlayerSpawnedInWorld.RegisterHandler(PlayerSpawnedInWorld);
+        Instance = this;
     }
+
+    // GameUtils.WorldTimeToDays(ulong);
+    // GameStats.GetInt(EnumGameStats.BloodMoonDay);
 
     private bool ShouldTimeProgress() {
         if (Overridden == SmartTimeOverride.FREEZE) {
@@ -32,7 +44,94 @@ public class SmartTime : IModApi
 
         World world = GameManager.Instance.World;
 
-        return world.Players.list.Count >= minNumberOfPlayers;
+        return world.Players.list.Count == 0 || world.Players.list.Count >= minNumberOfPlayers;
+    }
+
+    private bool WasTimeProgressing = true;
+
+    private void ChatSend(string message, List<int> recipients) {
+        GameManager.Instance.ChatMessageServer(
+                null, // Client info (null, since we're server)
+                EChatType.Global,
+                -1, // -1 since we're server
+                message,
+                "SmartTime", // Main Name
+                false, // don't localize main name
+                recipients);
+    }
+
+    private void ChatBroadcast(string message) {
+        List<int> playerIds = new List<int>();
+        foreach (var player in GameManager.Instance.World.Players.list) {
+            if (player != null) {
+                playerIds.Add(player.entityId);
+            }
+        }
+        ChatSend(message, playerIds);
+    }
+
+    public void PlayerSpawnedInWorld(ClientInfo info, RespawnType respawnType, Vector3i pos) {
+        if (respawnType != RespawnType.EnterMultiplayer && respawnType != RespawnType.JoinMultiplayer) {
+            return;
+        }
+
+        InformPlayerOfStatus(info.entityId);
+    }
+
+    public void InformPlayerOfStatus(int entityId) {
+        List<int> recipients = new List<int>();
+        recipients.Add(entityId);
+
+        ChatSend(ShouldTimeProgress() ? TimeUnfrozenMessage : TimeFrozenMessage, recipients);
+    }
+
+    private const string TimeUnfrozenMessage = "World time is [FF0000]UNFROZEN[-].";
+    private void AnnounceTimeUnfrozen() {
+        ChatBroadcast(TimeUnfrozenMessage);
+    }
+
+    private const string TimeFrozenMessage = "World time is [00FF00]FROZEN[-].";
+    private void AnnounceTimeFrozen() {
+        ChatBroadcast(TimeFrozenMessage);
+    }
+
+    public void GameUpdate() {
+        bool shouldProgress = ShouldTimeProgress();
+
+        if (shouldProgress != WasTimeProgressing) {
+            if (shouldProgress) {
+                AnnounceTimeUnfrozen();
+            } else {
+                AnnounceTimeFrozen();
+            }
+        }
+        WasTimeProgressing = shouldProgress;
+
+        if (shouldProgress) {
+            // Do nothing.
+            return;
+        }
+
+        World world = GameManager.Instance.World;
+        (int day, int hour, int minute) = GameUtils.WorldTimeToElements(world.worldTime);
+
+        var bloodMoonDay = GameStats.GetInt(EnumGameStats.BloodMoonDay);
+
+        if (day == bloodMoonDay) {
+            // Handle blood moon.
+            if (world.worldTime >= GameUtils.DayTimeToWorldTime(day, BLOOD_MOON_HOUR, BLOOD_MOON_MINUTE) - GRACE_TIME) {
+                // Back to 0:00.
+                if (day == 0) {
+                    world.SetTimeJump(GameUtils.DayTimeToWorldTime(day, 0, 0), false);
+                } else {
+                    world.SetTimeJump(GameUtils.DayTimeToWorldTime(day - 1, BLOOD_MOON_HOUR, BLOOD_MOON_MINUTE), false);
+                }
+            }
+        } else {
+            if (world.worldTime >= GameUtils.DayTimeToWorldTime(day, DAY_END_HOUR, DAY_END_MINUTE) - GRACE_TIME) {
+                world.SetTimeJump(GameUtils.DayTimeToWorldTime(day, 0, 0), false);
+            }
+        }
     }
 
     /* Returns true iff time is frozen. */
@@ -52,7 +151,7 @@ public class SmartTime : IModApi
         }
     }
 
-    public void GameUpdate()
+    public void GameUpdateOld()
     {
         World world = GameManager.Instance.World;
         if (world.Players.list.Count == 0) {
@@ -155,5 +254,25 @@ public class ConsoleCmdStopTime : ConsoleCmdAbstract
 
     public override void Execute(List<string> _params, CommandSenderInfo _senderInfo) {
         SmartTime.ForceFreeze();
+    }
+}
+
+public class ConsoleCmdStatusTime : ConsoleCmdAbstract
+{
+    public override int DefaultPermissionLevel => 0;
+
+    protected override string[] getCommands() {
+        return new string[1]{ "statustime" };
+    }
+
+    protected override string getDescription() {
+        return "Prints whether the smart time is frozen or unfrozen.";
+    }
+
+    public override void Execute(List<string> _params, CommandSenderInfo _senderInfo) {
+        int entityId = _senderInfo.RemoteClientInfo?.entityId ?? -1;
+        if (entityId != -1) {
+            SmartTime.Instance?.InformPlayerOfStatus(entityId);
+        }
     }
 }
